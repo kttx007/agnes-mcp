@@ -60,6 +60,17 @@ Copy `skill/SKILL.md` to `~/.workbuddy/skills/agnes-image-gen/SKILL.md`.
 
 This project merges code and ideas from three sources. See `NOTICES.md` for details.
 
+## Related Projects
+
+These projects solve different problems and are intentionally kept separate:
+
+| Project | What it does | When to use |
+|---------|-------------|-------------|
+| [Fashion-AI](https://github.com/liangdabiao/Fashion-AI) | 爆款检索 → 风格分析 → AI 生图 全流水线 (Milvus + LLM + Image Gen) | 跨境电商铺货，批量出图 |
+| [Open PicsetAI](https://github.com/ym1100/open-picsetai) | 全品电商图工作台 (风格复刻/精修/PSD导出) | 团队生产环境，需要 Web UI |
+| [EC-Portrait-Studio](https://github.com/mkhsu2002/EC-Portrait-Studio) | 多角度模特图生成 (Gemini + Firebase) | 服装类目，需要模特图 |
+| [Amazon Image Studio](https://github.com/Ali-Aria/amazon-image-studio) | Amazon Listing 图策划 + 生成 | 亚马逊卖家 |
+
 ## License
 
 - `mcp-server/` — MIT
