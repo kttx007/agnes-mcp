@@ -1,0 +1,149 @@
+ 电商AI生图爆款流水线 - 实现方案
+
+ Context
+
+ 基于文章描述的架构，实现一个完整的电商AI生图流水线：将新品平铺图通过 Milvus 混合检索找到相似爆款，再用 Qwen3.5
+ 分析风格，最终用 Gemini 3.1 Flash (Nano Banana 2) 生成宣传图。所有模型通过 OpenRouter API 调用，Milvus 使用本地 Lite
+ 模式，零部署成本。
+
+ 项目结构
+
+ D:\cloth-milvus\
+ ├── main.py                  # CLI 入口，整合全流程
+ ├── config.py                # 配置管理（API Key、模型、路径等）
+ ├── embeddings.py            # Dense/Sparse 向量生成
+ ├── milvus_store.py          # Milvus Collection 创建、插入、混合检索
+ ├── style_analyzer.py        # Qwen3.5 爆款风格分析
+ ├── image_generator.py       # Nano Banana 2 宣传图生成
+ ├── utils.py                 # 工具函数（图片编码、base64处理等）
+ ├── data_setup.py            # 初始化示例数据（CSV生成）
+ ├── requirements.txt         # 依赖
+ ├── .env                     # API Key 配置（用户自行填写）
+ ├── README.md                # 使用说明（用户明确要求才写）
+ │
+ ├── images/                  # 历史爆款商品图片
+ │   ├── SKU001.jpg ~ SKU040.jpg
+ ├── new_products/            # 新品图片
+ │   ├── NEW001.jpg ~ NEW004.jpg
+ ├── products.csv             # 历史商品元数据
+ ├── new_products.csv         # 新品元数据
+ ├── output/                  # 生成结果输出目录
+ │   └── ...
+ └── milvus_fashion.db        # Milvus Lite 数据库（运行后自动生成）
+
+ 模块设计
+
+ 1. config.py — 配置管理
+
+ - 从 .env 文件读取 OPENROUTER_API_KEY
+ - 定义模型名称、向量维度、Milvus 连接信息、路径等常量
+ - 支持命令行参数覆盖（如 --top-k, --image-size）
+
+ 2. utils.py — 工具函数
+
+ - image_to_uri(img, max_size) — PIL Image → base64 data URI
+ - extract_images(response) — 从 OpenRouter chat completion 响应中提取生成图片
+ - load_image(path) — 安全加载图片，统一转 RGB
+ - save_image(img, path) — 保存生成结果
+
+ 3. embeddings.py — 向量生成
+
+ - get_image_embeddings(images, batch_size) — 批量图片 → 2048d 稠密向量（OpenRouter API）
+ - get_text_embedding(text) — 单条文本 → 2048d 向量
+ - build_tfidf(descriptions) — 构建 TF-IDF 模型并生成稀疏向量
+ - sparse_to_dict(sparse_row) — scipy 稀疏行 → Milvus 稀疏格式
+
+ 4. milvus_store.py — Milvus 操作
+
+ - create_collection(client, embed_dim) — 创建混合 Schema（dense_vector + sparse_vector + 标量字段）
+ - insert_products(client, products, dense_vecs, sparse_vecs) — 插入商品数据
+ - hybrid_search(client, query_dense, query_sparse, filter_expr, top_k) — Dense + Sparse + RRF 混合检索
+
+ 5. style_analyzer.py — 风格分析
+
+ - analyze_style(llm_client, reference_images) — 将爆款参考图发给 Qwen3.5，输出风格 prompt
+
+ 6. image_generator.py — 宣传图生成
+
+ - generate_promo_photo(llm_client, new_image, ref_image, style_prompt, scene_hint, aspect_ratio, image_size) — 调用
+ Nano Banana 2 生图
+
+ 7. data_setup.py — 示例数据生成
+
+ - create_sample_products_csv() — 生成 40 条女装商品数据（products.csv）
+ - create_sample_new_products_csv() — 生成 4 条新品数据（new_products.csv）
+ - create_placeholder_images() — 生成占位图片（说明用户需替换为真实图片）
+
+ 8. main.py — CLI 入口
+
+ 提供三个子命令：
+
+ python main.py setup          # 初始化数据 + 建库 + 入库（首次运行）
+ python main.py search         # 为新品检索相似爆款（可单独测试检索）
+ python main.py generate       # 完整流程：检索 → 分析 → 生图
+
+ generate 完整流程：
+ 1. 加载新品数据
+ 2. 编码新品图片（Dense）+ 文本（Sparse/TF-IDF）
+ 3. Milvus 混合检索 Top-K 爆款
+ 4. 加载爆款参考图
+ 5. Qwen3.5 分析风格 → style_prompt
+ 6. Nano Banana 2 生成宣传图
+ 7. 保存结果到 output/ 目录
+ 8. 打印对比摘要
+
+ 关键 CLI 参数：
+ - --new-id NEW001 — 指定处理哪个新品（默认全部）
+ - --top-k 3 — 检索返回数量
+ - --aspect-ratio 3:4 — 生成图比例
+ - --image-size 2K — 生成图分辨率
+ - --sales-threshold 1500 — 爆款最低销量过滤
+
+ 数据格式
+
+ products.csv（40条示例）
+
+ product_id,image_path,category,color,style,season,sales_count,description,price
+ SKU001,SKU001.jpg,maxi_dress,pink,bohemian,summer,3200,Bohemian pink maxi dress with tassel tie detail and flowing
+ chiffon fabric,29.99
+ ...
+
+ new_products.csv（4条示例）
+
+ new_id,image_path,category,style,season,prompt_hint
+ NEW001,NEW001.jpg,midi_dress,casual,spring,Knit cardigan paired with grey tulle skirt on a sunlit cafe terrace
+ ...
+
+ 依赖 (requirements.txt)
+
+ pymilvus>=2.4.0
+ openai>=1.0.0
+ new_id,image_path,category,style,season,prompt_hint
+ NEW001,NEW001.jpg,midi_dress,casual,spring,Knit cardigan paired with grey tulle skirt on a sunlit cafe terrace
+ ...
+
+ 依赖 (requirements.txt)
+
+ pymilvus>=2.4.0
+ openai>=1.0.0
+ requests>=2.31.0
+ pillow>=10.0.0
+ scikit-learn>=1.3.0
+ tqdm>=4.65.0
+ python-dotenv>=1.0.0
+ numpy>=1.24.0
+
+ 关键技术点
+
+ 1. 混合检索：Dense（图片 Embedding 视觉相似）+ Sparse（TF-IDF 关键词匹配）+ 标量过滤（品类+销量）+ RRF 融合排序
+ 2. API 调用：所有模型通过 OpenRouter，Embedding 用 requests 直接调用，LLM/生图用 OpenAI SDK
+ 3. 图片处理：PIL 统一管理，base64 编码传输，注意 resize 防止超限
+ 4. Milvus Lite：本地文件数据库，无需 Docker，首次自动创建
+
+ 验证方式
+
+ 1. 运行 python main.py setup — 确认 Milvus 建库成功、数据插入 40 条
+ 2. 运行 python main.py search --new-id NEW001 — 确认混合检索返回 Top-K 爆款
+ 3. 运行 python main.py generate --new-id NEW001 — 确认端到端生成宣传图并保存到 output/
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+
