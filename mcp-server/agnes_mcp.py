@@ -207,7 +207,7 @@ TOOLS = [
             "Generate an image via Agnes Image API. Supports text2img, img2img, and compose (multiple images). "
             "Auto-translates non-English prompts to English. Returns image URL(s)."
         ),
-        inputSchema={
+        input_schema={
             "type": "object",
             "properties": {
                 "prompt": {"type": "string", "description": "Image prompt (auto-translated if non-English)"},
@@ -228,7 +228,7 @@ TOOLS = [
             "Create a video generation task via Agnes Video API. Supports text2video, img2video, and keyframes. "
             "Auto-translates prompts. Optional auto-poll waits for completion and returns the video URL."
         ),
-        inputSchema={
+        input_schema={
             "type": "object",
             "properties": {
                 "prompt": {"type": "string", "description": "Video prompt (auto-translated if non-English)"},
@@ -251,7 +251,7 @@ TOOLS = [
     types.Tool(
         name="get_video_result",
         description="Poll for async video task result. Returns video URL when completed.",
-        inputSchema={
+        input_schema={
             "type": "object",
             "properties": {
                 "video_id": {"type": "string"},
@@ -262,7 +262,7 @@ TOOLS = [
     types.Tool(
         name="translate_prompt",
         description="Translate a non-English prompt to English using Agnes text model. Returns English prompt.",
-        inputSchema={
+        input_schema={
             "type": "object",
             "properties": {"prompt": {"type": "string"}},
             "required": ["prompt"],
@@ -271,7 +271,7 @@ TOOLS = [
     types.Tool(
         name="upload_media",
         description="Upload a local file to Litterbox and return a public URL. Useful for img2img/img2video/keyframes.",
-        inputSchema={
+        input_schema={
             "type": "object",
             "properties": {"file_path": {"type": "string"}, "ttl": {"type": "string", "default": "1h", "description": "1h, 12h, 24h, 72h"}},
             "required": ["file_path"],
