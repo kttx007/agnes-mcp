@@ -1,90 +1,68 @@
-# Agnes MCP Server
+# Agnes MCP — Unified Agnes AI Image & Video Generation Toolkit
 
-A [Model Context Protocol](https://modelcontextprotocol.io/) server that wraps the [Agnes AI](https://agnes-ai.com) Image & Video APIs.
+A unified toolkit for the [Agnes AI](https://agnes-ai.com) API, providing three access layers:
 
-## Tools
+| Layer | Path | What it does | License |
+|-------|------|-------------|---------|
+| **MCP Server** | `mcp-server/` | 5 tools accessible from any MCP-compatible AI client (WorkBuddy, Claude Desktop, Cursor, VS Code) | MIT |
+| **CLI** | `cli/` | Zero-dependency Python CLI — text/image/video generation from terminal | GPL v3 |
+| **Skill** | `skill/` | WorkBuddy Skill with prompt library and showcase examples | MIT |
+
+## MCP Server Tools
 
 | Tool | Description |
 |------|-------------|
-| `generate_image` | Text-to-image / image-to-image (agnes-image-2.1-flash) |
-| `generate_video` | Text-to-video / image-to-video (agnes-video-v2.0, async) |
-| `get_video_result` | Poll for async video task result |
+| `generate_image` | Text-to-image, image-to-image, multi-image compose. Auto-translates non-English prompts. |
+| `generate_video` | Text-to-video, image-to-video, keyframe animation. Auto-translate + optional auto-poll. |
+| `get_video_result` | Poll for async video task result. |
+| `translate_prompt` | Translate non-English prompt to English via agnes-2.0-flash. |
+| `upload_media` | Upload local file to Litterbox, get public URL for img2img/img2video. |
 
-## Setup
+## Quick Start
 
-### Prerequisites
+### MCP Server (WorkBuddy / Claude Desktop / Cursor)
 
-- Python 3.10+
-- `pip install mcp`
+```json
+{
+  "mcpServers": {
+    "agnes-mcp": {
+      "command": "python",
+      "args": ["mcp-server/agnes_mcp.py"],
+      "env": { "AGNES_API_KEY": "your-key" }
+    }
+  }
+}
+```
 
-### Configuration
-
-Set environment variables:
+### CLI (terminal)
 
 ```bash
-AGNES_API_KEY=your-api-key-here
-AGNES_IMAGE_MODEL=agnes-image-2.1-flash  # optional
-AGNES_VIDEO_MODEL=agnes-video-v2.0       # optional
+export AGNES_API_KEY=your-key
+python cli/agnes.py image text2img --prompt "A sunset over Tokyo"
+python cli/agnes.py video text2video --prompt "A cat walking on the beach"
 ```
 
-### WorkBuddy
+### Skill (WorkBuddy)
 
-Add to `~/.workbuddy/mcp.json`:
+Copy `skill/SKILL.md` to `~/.workbuddy/skills/agnes-image-gen/SKILL.md`.
 
-```json
-{
-  "mcpServers": {
-    "agnes-mcp": {
-      "type": "stdio",
-      "command": "python",
-      "args": ["/path/to/agnes_image_video_mcp.py"],
-      "env": {
-        "AGNES_API_KEY": "your-key"
-      }
-    }
-  }
-}
-```
+## Features
 
-### Claude Desktop
+- **Auto-translate**: Non-English prompts auto-translated via agnes-2.0-flash
+- **Auto-upload**: Local images auto-uploaded to Litterbox for URL-based operations
+- **Auto-poll**: Video generation can auto-wait for completion (up to 600s)
+- **Keyframe animation**: Generate video transitions between 2+ keyframe images
+- **Multi-image compose**: Blend multiple reference images into one
+- **Cross-tool**: MCP protocol works with any compatible AI client
+- **Zero-dependency CLI**: Pure Python stdlib, no pip install needed
 
-Add to `claude_desktop_config.json`:
+## Attribution
 
-```json
-{
-  "mcpServers": {
-    "agnes-mcp": {
-      "command": "python",
-      "args": ["/path/to/agnes_image_video_mcp.py"],
-      "env": {
-        "AGNES_API_KEY": "your-key"
-      }
-    }
-  }
-}
-```
-
-### Cursor / VS Code
-
-Same stdio config pattern — see your editor's MCP documentation.
-
-## Usage
-
-Once connected, any MCP-compatible AI client can call:
-
-```
-Generate an image of a sunset over Tokyo
-Create a 5-second video of a cat walking on the beach
-```
-
-The AI will automatically use the appropriate tool.
-
-## API Reference
-
-- **Image API**: `POST https://apihub.agnes-ai.com/v1/images/generations`
-- **Video API**: `POST https://apihub.agnes-ai.com/v1/videos` (async)
-- **Video Poll**: `GET https://apihub.agnes-ai.com/agnesapi?video_id=<ID>`
+This project merges code and ideas from three sources. See `NOTICES.md` for details.
 
 ## License
 
-MIT
+- `mcp-server/` — MIT
+- `cli/` — GPL v3 (from 1038lab/Agnes-AI)
+- `skill/` — MIT (from jomeswang/agnes-ai-skill)
+- Root project — MIT
