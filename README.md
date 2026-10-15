@@ -13,26 +13,54 @@ A unified toolkit for the [Agnes AI](https://agnes-ai.com) API, providing three 
 | Tool | Description |
 |------|-------------|
 | `generate_image` | Text-to-image, image-to-image, multi-image compose. Auto-translates non-English prompts. |
-| `generate_video` | Text-to-video, image-to-video, keyframe animation. Auto-translate + optional auto-poll. |
+| `generate_video` | Text-to-video, image-to-video, multi-image video, keyframe animation. Auto-translate + optional auto-poll. |
 | `get_video_result` | Poll for async video task result. |
 | `translate_prompt` | Translate non-English prompt to English via agnes-2.0-flash. |
-| `upload_media` | Upload local file to Litterbox, get public URL for img2img/img2video. |
+| `upload_media` | Upload local file to a temporary host (Litterbox, fallback tmpfiles), get public URL for img2img/img2video. |
 
 ## Quick Start
 
 ### MCP Server (WorkBuddy / Claude Desktop / Cursor)
+
+Requires Python 3.10+ and MCP Python SDK 2.x:
+
+```bash
+pip install -r mcp-server/requirements.txt
+```
+
+Add the server to your MCP client config (this file lives on your machine, not in this repo):
 
 ```json
 {
   "mcpServers": {
     "agnes-mcp": {
       "command": "python",
-      "args": ["mcp-server/agnes_mcp.py"],
+      "args": ["/absolute/path/to/agnes-mcp/mcp-server/agnes_mcp.py"],
       "env": { "AGNES_API_KEY": "your-key" }
     }
   }
 }
 ```
+
+### Keeping your API key private
+
+Never put your key in code or commit it. Use one of these:
+
+1. **MCP client config** — the `env` block above. That config file is local to your computer.
+2. **Local `.env` file** — `cp .env.example .env`, then fill in `AGNES_API_KEY`. `.env` is in `.gitignore`, so `git` will not upload it. The server reads it automatically.
+3. **Shell environment** — `export AGNES_API_KEY=...` in `~/.zshrc` / `~/.bashrc`.
+
+Get a key at <https://platform.agnes-ai.com/settings/apiKeys>. If a key ever gets pushed to GitHub, revoke it there and create a new one.
+
+### API notes
+
+| Capability | Endpoint | Notes |
+|---|---|---|
+| Image | `POST https://apihub.agnes-ai.com/v1/images/generations` | `size` is `WIDTHxHEIGHT`; reference images go in `extra_body.image` as a URL array |
+| Video create | `POST https://apihub.agnes-ai.com/v1/videos` | `num_frames` must be 8n+1 and ≤ 441; `frame_rate` 1–60 |
+| Video status | `GET /agnesapi?video_id=video_…` or `GET /v1/videos/task_…` | Async; poll until `completed`/`succeeded` |
+
+Local image paths are uploaded to a temporary public host (Litterbox, fallback tmpfiles) because Agnes needs public image URLs.
 
 ### CLI (terminal)
 
