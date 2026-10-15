@@ -34,9 +34,9 @@ def cmd_image(args):
         translated = translate.translate(args.prompt)
         if args.verbose:
             print(f"[translated] {args.prompt} -> {translated}", file=sys.stderr)
-    image_b64s = [media.to_base64(u) for u in (args.image_url or [])] if args.image_url else None
+    image_urls = [media.resolve(u) for u in (args.image_url or [])] or None
     result = image.generate(
-        translated, mode=args.mode, image_b64s=image_b64s,
+        translated, mode=args.mode, image_urls=image_urls,
         size=args.size, output_dir=args.output_dir, dry_run=args.dry_run
     )
     if args.dry_run:
@@ -51,9 +51,9 @@ def cmd_video(args):
         translated = translate.translate(args.prompt)
         if args.verbose:
             print(f"[translated] {args.prompt} -> {translated}", file=sys.stderr)
-    image_b64s = [media.to_base64(u) for u in (args.image_url or [])] if args.image_url else None
+    image_urls = [media.resolve(u) for u in (args.image_url or [])] or None
     result = video.create(
-        translated, mode=args.mode, image_b64s=image_b64s,
+        translated, mode=args.mode, image_urls=image_urls,
         width=args.width, height=args.height, num_frames=args.num_frames,
         frame_rate=args.frame_rate, seed=args.seed,
         num_inference_steps=args.num_inference_steps,
@@ -95,13 +95,15 @@ def cmd_smoke_test(args):
     print("  PASS (dry-run)")
 
     print("[image] testing img2img (dry-run)...")
-    r = image.generate("test", mode="img2img", image_b64s=["dGVzdA=="], dry_run=True)
+    r = image.generate("test", mode="img2img", image_urls=["https://example.com/a.png"], dry_run=True)
     assert r["dry_run"]
     print("  PASS (dry-run)")
 
     if args.video_case:
         print(f"[video] testing {args.video_case}...")
-        r = video.create("test", mode=args.video_case, dry_run=True)
+        sample = {"img2video": ["https://example.com/a.png"],
+                  "keyframes": ["https://example.com/a.png", "https://example.com/b.png"]}.get(args.video_case)
+        r = video.create("test", mode=args.video_case, image_urls=sample, dry_run=True)
         assert r["dry_run"]
         print("  PASS (dry-run)")
 
@@ -171,7 +173,7 @@ def main():
 
     # video
     p_vid = sub.add_parser("video", parents=[global_args], help="Generate videos with agnes-video-v2.0")
-    p_vid.add_argument("mode", choices=["text2video", "img2video", "keyframes"])
+    p_vid.add_argument("mode", choices=["text2video", "img2video", "multivideo", "keyframes"])
     p_vid.add_argument("--prompt", required=True)
     p_vid.add_argument("--image-url", action="append")
     p_vid.add_argument("--width", type=int, default=1152)

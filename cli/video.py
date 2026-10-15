@@ -1,4 +1,4 @@
-import json, os, sys, time, urllib.error, urllib.request
+import json, os, sys, time, urllib.error, urllib.parse, urllib.request
 
 API_BASE = os.environ.get("AGNES_API_BASE", "https://apihub.agnes-ai.com")
 
@@ -20,7 +20,7 @@ def _api_call(req, timeout=120):
     except (urllib.error.URLError, json.JSONDecodeError, TimeoutError) as e:
         sys.exit(f"API request failed: {e}")
 
-def create(prompt, mode="text2video", image_b64s=None, width=1152, height=768, num_frames=121, frame_rate=24, seed=None, num_inference_steps=None, negative_prompt=None, poll=True, poll_interval=10, timeout=900, download=False, output_dir=None, dry_run=False, api_base=None):
+def create(prompt, mode="text2video", image_urls=None, width=1152, height=768, num_frames=121, frame_rate=24, seed=None, num_inference_steps=None, negative_prompt=None, poll=True, poll_interval=10, timeout=900, download=False, output_dir=None, dry_run=False, api_base=None):
     base = api_base or API_BASE
 
     if num_frames > 441:
@@ -38,10 +38,18 @@ def create(prompt, mode="text2video", image_b64s=None, width=1152, height=768, n
         "num_frames": num_frames,
         "frame_rate": frame_rate,
     }
-    if mode == "img2video" and image_b64s:
-        body["image"] = image_b64s[0]
-    elif mode == "keyframes" and image_b64s:
-        body["extra_body"] = {"image": image_b64s, "mode": "keyframes"}
+    image_urls = image_urls or []
+    if mode == "img2video" and len(image_urls) != 1:
+        sys.exit("Error: img2video needs exactly one --image-url")
+    if mode in ("multivideo", "keyframes") and len(image_urls) < 2:
+        sys.exit(f"Error: {mode} needs at least two --image-url")
+    # Agnes expects public image URLs (see agnes-ai-cli).
+    if mode == "img2video":
+        body["image"] = image_urls[0]
+    elif mode == "multivideo":
+        body["extra_body"] = {"image": image_urls}
+    elif mode == "keyframes":
+        body["extra_body"] = {"image": image_urls, "mode": "keyframes"}
     if seed is not None:
         body["seed"] = seed
     if num_inference_steps is not None:
@@ -60,14 +68,32 @@ def create(prompt, mode="text2video", image_b64s=None, width=1152, height=768, n
     )
     resp = _api_call(req)
 
-    video_id = resp.get("video_id") or resp.get("id") or resp.get("data", {}).get("video_id")
-    task_id = resp.get("task_id") or resp.get("id")
+    data = resp.get("data") if isinstance(resp.get("data"), dict) else {}
+    rid = resp.get("id") if isinstance(resp.get("id"), str) else None
+    video_id = resp.get("video_id") or data.get("video_id") or (rid if rid and rid.startswith("video_") else None)
+    task_id = resp.get("task_id") or data.get("task_id") or rid
+    poll_id = video_id or task_id
+    if not poll_id:
+        sys.exit(f"Error: no video_id/task_id in response: {json.dumps(resp)[:500]}")
 
-    result = {"task_id": task_id, "video_id": video_id, "status": "queued"}
+    result = {"task_id": task_id, "video_id": video_id, "status": resp.get("status", "queued")}
 
-    if poll and video_id:
-        return poll_video(video_id, poll_interval, timeout, download, output_dir, base)
+    if poll:
+        return poll_video(poll_id, poll_interval, timeout, download, output_dir, base)
     return result
+
+def _status_url(base, video_id):
+    if video_id.startswith("task_"):
+        return f"{base}/v1/videos/{urllib.parse.quote(video_id)}"
+    return f"{base}/agnesapi?" + urllib.parse.urlencode({"video_id": video_id})
+
+def _video_url(resp):
+    meta = resp.get("metadata") if isinstance(resp.get("metadata"), dict) else {}
+    res = resp.get("result") if isinstance(resp.get("result"), dict) else {}
+    for c in (meta.get("url"), resp.get("video_url"), resp.get("url"), resp.get("output_url"), res.get("video_url")):
+        if isinstance(c, str) and c.startswith(("http://", "https://")):
+            return c
+    return None
 
 def poll_video(video_id, poll_interval=10, timeout=900, download=False, output_dir=None, api_base=None):
     base = api_base or API_BASE
@@ -77,21 +103,28 @@ def poll_video(video_id, poll_interval=10, timeout=900, download=False, output_d
         if time.time() - start > timeout:
             return {"video_id": video_id, "status": "timed_out"}
 
-        url = f"{base}/agnesapi?video_id={video_id}&model_name=agnes-video-v2.0"
-        req = urllib.request.Request(url, headers=_headers())
-        resp = _api_call(req)
+        req = urllib.request.Request(_status_url(base, video_id), headers=_headers())
+        try:
+            resp = json.loads(urllib.request.urlopen(req, timeout=60).read())
+        except urllib.error.HTTPError as e:
+            if e.code == 503:  # service busy, keep waiting
+                time.sleep(poll_interval)
+                continue
+            sys.exit(f"API error {e.code}: {e.read().decode()}")
+        except (urllib.error.URLError, json.JSONDecodeError, TimeoutError) as e:
+            sys.exit(f"API request failed: {e}")
 
-        status = resp.get("status", resp.get("state", "unknown"))
-        if status in ("completed", "succeeded", "done"):
-            video_url = resp.get("video_url") or resp.get("url") or resp.get("result", {}).get("video_url")
+        status = str(resp.get("status", resp.get("state", "unknown"))).lower()
+        video_url = _video_url(resp)
+        if status in ("completed", "succeeded", "success", "done") or (status == "unknown" and resp.get("completed_at") and video_url):
             result = {"video_id": video_id, "status": "completed", "video_url": video_url}
             if download and video_url:
                 os.makedirs(output_dir or ".", exist_ok=True)
-                local = os.path.join(output_dir or ".", f"agnes_video_{video_id[:8]}.mp4")
+                local = os.path.join(output_dir or ".", f"agnes_video_{video_id[-12:]}.mp4")
                 urllib.request.urlretrieve(video_url, local)
                 result["local_path"] = local
             return result
-        elif status in ("failed", "error"):
+        elif status in ("failed", "error", "cancelled", "canceled"):
             return {"video_id": video_id, "status": "failed", "error": resp.get("error", resp.get("message", "unknown"))}
 
         time.sleep(poll_interval)
@@ -99,7 +132,7 @@ def poll_video(video_id, poll_interval=10, timeout=900, download=False, output_d
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=["text2video", "img2video", "keyframes"])
+    parser.add_argument("mode", choices=["text2video", "img2video", "multivideo", "keyframes"])
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--image-url", action="append")
     parser.add_argument("--width", type=int, default=1152)
@@ -116,10 +149,10 @@ if __name__ == "__main__":
     parser.add_argument("--output-dir")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-    from media import to_base64
-    image_b64s = [to_base64(u) for u in args.image_url] if args.image_url else None
+    from media import resolve
+    image_urls = [resolve(u) for u in args.image_url] if args.image_url else None
     result = create(
-        args.prompt, args.mode, image_b64s,
+        args.prompt, args.mode, image_urls,
         args.width, args.height, args.num_frames, args.frame_rate,
         args.seed, args.num_inference_steps, args.negative_prompt,
         not args.no_poll, args.poll_interval, args.timeout,

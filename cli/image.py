@@ -8,7 +8,7 @@ def _get_key():
         sys.exit("Error: AGNES_API_KEY not set")
     return key
 
-def generate(prompt, mode="text2img", image_b64s=None, size="1024x768", output_dir=None, dry_run=False, api_base=None):
+def generate(prompt, mode="text2img", image_urls=None, size="1024x768", output_dir=None, dry_run=False, api_base=None):
     base = api_base or API_BASE
     body = {
         "model": "agnes-image-2.1-flash",
@@ -16,10 +16,15 @@ def generate(prompt, mode="text2img", image_b64s=None, size="1024x768", output_d
         "n": 1,
         "size": size,
     }
-    if mode in ("img2img", "compose") and image_b64s:
+    if mode == "img2img" and len(image_urls or []) != 1:
+        sys.exit("Error: img2img needs exactly one --image-url")
+    if mode == "compose" and len(image_urls or []) < 2:
+        sys.exit("Error: compose needs at least two --image-url")
+    if mode in ("img2img", "compose"):
+        # Agnes expects public image URLs in extra_body.image (see agnes-ai-cli).
         body["extra_body"] = {
-            "image": image_b64s,
-            "response_format": "b64_json",
+            "image": image_urls,
+            "response_format": "url",
         }
 
     if dry_run:
@@ -84,9 +89,9 @@ if __name__ == "__main__":
     parser.add_argument("--output-dir")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-    from media import to_base64
-    image_b64s = [to_base64(u) for u in args.image_url] if args.image_url else None
-    result = generate(args.prompt, args.mode, image_b64s, args.size, args.output_dir, args.dry_run)
+    from media import resolve
+    image_urls = [resolve(u) for u in args.image_url] if args.image_url else None
+    result = generate(args.prompt, args.mode, image_urls, args.size, args.output_dir, args.dry_run)
     if not args.dry_run:
         for p in result:
             print(p)

@@ -20,7 +20,7 @@ def to_base64(path_or_url, timeout=60):
 def upload_to_litterbox(file_path, ttl="1h"):
     if not os.path.isfile(file_path):
         sys.exit(f"Error: file not found: {file_path}")
-    boundary = "---- AgnesMediaBoundary"
+    boundary = "----AgnesMediaBoundary"
     filename = os.path.basename(file_path)
     with open(file_path, "rb") as f:
         file_data = f.read()
@@ -43,11 +43,13 @@ def upload_to_litterbox(file_path, ttl="1h"):
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}
     )
     try:
-        url = urllib.request.urlopen(req).read().decode().strip()
+        url = urllib.request.urlopen(req, timeout=120).read().decode().strip()
     except urllib.error.HTTPError as e:
         sys.exit(f"Upload error {e.code}: {e.read().decode()}")
     except urllib.error.URLError as e:
         sys.exit(f"Upload failed: {e}")
+    if not url.startswith(("http://", "https://")):
+        sys.exit(f"Upload failed, Litterbox returned: {url[:200]}")
     return url
 
 def resolve(path, ttl="1h"):
